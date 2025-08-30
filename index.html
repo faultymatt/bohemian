@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Bohemian – Browser Wavetable Synth (A/B + Serum-style Pitch)</title>
+  <title>Bohemian – Browser Wavetable Synth (A/B + Custom + Keys)</title>
   <link rel="icon" href="/favicon.ico">
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
@@ -24,12 +24,16 @@
     .hint{color:#6b7280;font-size:12px;text-align:center;margin-top:10px}
     .group{display:flex;gap:10px;align-items:center}
     .num{display:inline-block;min-width:48px;text-align:right}
+    .sliders{display:grid;grid-template-columns:repeat(8,1fr);gap:8px;margin-top:8px}
+    .sliders label{display:flex;flex-direction:column;align-items:center;font-size:10px;color:#94a3b8}
   </style>
   <script src="https://unpkg.com/tone@14.8.49/build/Tone.js"></script>
 </head>
 <body>
   <div class="wrap">
     <h1>⚡ Bohemian ⚡</h1>
+
+    <!-- LFO / Player -->
     <div class="card" style="margin-bottom:16px">
       <canvas id="editor" width="980" height="260"></canvas>
       <div class="row" style="margin-top:14px">
@@ -52,34 +56,31 @@
         <label>Smooth:
           <input id="smooth" type="range" min="0" max="1" value="0.5" step="0.05"> <span id="smoothv" class="num">0.50</span>
         </label>
-        <label>Depth (LFO):
+        <label>LFO Depth:
           <input id="depth" type="range" min="0" max="1" step="0.01" value="0.30"> <span id="depthv" class="num">0.30</span>
         </label>
       </div>
     </div>
 
+    <!-- OSC / WT & Pitch -->
     <div class="card">
       <div class="row">
         <div class="group">
           <strong>WT A</strong>
           <select id="wtA">
             <option value="sine">Sine</option>
-            <option value="triangle">Triangle</option>
-            <option value="square">Square</option>
             <option value="sawtooth" selected>Saw</option>
-            <option value="fatsawtooth">Fat Saw</option>
-            <option value="pwm">PWM</option>
+            <option value="square">Square</option>
+            <option value="customA">Custom (A)</option>
           </select>
         </div>
         <div class="group">
           <strong>WT B</strong>
           <select id="wtB">
             <option value="sine">Sine</option>
-            <option value="triangle">Triangle</option>
-            <option value="square">Square</option>
             <option value="sawtooth">Saw</option>
-            <option value="fatsawtooth" selected>Fat Saw</option>
-            <option value="pwm">PWM</option>
+            <option value="square" selected>Square</option>
+            <option value="customB">Custom (B)</option>
           </select>
         </div>
         <label>WT Mix (A↔B):
@@ -93,8 +94,6 @@
         <label>Base Freq (Hz):
           <input id="baseHz" type="range" min="40" max="1000" step="1" value="220"> <span id="baseHzv" class="num">220</span>
         </label>
-
-        <!-- Serum-style pitch controls -->
         <label>Octave:
           <input id="oct" type="range" min="-3" max="3" step="1" value="0"> <span id="octv" class="num">0</span>
         </label>
@@ -110,9 +109,24 @@
       </div>
     </div>
 
+    <!-- Custom WT Editor (Additive Partials) -->
+    <div class="card" style="margin-top:16px">
+      <div class="row">
+        <strong>Custom WT Editor (16 partials)</strong>
+        <label>Target:
+          <select id="customTarget">
+            <option value="A">Apply to A</option>
+            <option value="B">Apply to B</option>
+          </select>
+        </label>
+        <button id="applyCustom" class="btn ghost">Apply to Target</button>
+      </div>
+      <div class="sliders" id="partialsWrap"></div>
+      <p class="hint">Tip: set Partial 1 for a sine. Add Partial 2 for even harmonics (saw/square flavors). Mix creatively!</p>
+    </div>
+
     <p class="hint">
-      Draw the curve to modulate Pitch (detune in cents) or Filter cutoff. <br/>
-      Shortcuts: Shift = step mode, D = delete point, R = reset curve.
+      Keyboard (like FL): Z X C V B N M = C3 row, S/D/G/H/J = black keys; Q W E R T Y U = C4 row, 2/3/5/6/7 = black keys.
     </p>
   </div>
 
@@ -125,7 +139,6 @@
     const inner={x:pad,y:pad,w:W-pad*2,h:H-pad*2};
     let points=[{t:0,v:0},{t:.25,v:1},{t:.5,v:0},{t:.75,v:-1},{t:1,v:0}];
     let dragging=null,selected=-1,stepMode=false;
-
     const clamp=(v,min,max)=>Math.min(max,Math.max(min,v));
     const t2x=t=>inner.x+t*inner.w, v2y=v=>inner.y+(1-(v+1)/2)*inner.h;
     const x2t=x=>clamp((x-inner.x)/inner.w,0,1);
@@ -137,39 +150,25 @@
       points.sort((a,b)=>a.t-b.t);
       for(let i=0;i<points.length;i++){
         const p=points[i],x=t2x(p.t),y=v2y(p.v);
-        if(i===0)ctx.moveTo(x,y);
-        else{ if(stepMode){const prev=points[i-1];ctx.lineTo(x,v2y(prev.v));} ctx.lineTo(x,y); }
+        if(i===0)ctx.moveTo(x,y); else { if(stepMode){const prev=points[i-1];ctx.lineTo(x,v2y(prev.v));} ctx.lineTo(x,y); }
       }
       ctx.stroke();
       points.forEach((p,i)=>{ctx.fillStyle=i===selected?'#c084fc':'#60a5fa';ctx.beginPath();ctx.arc(t2x(p.t),v2y(p.v),6,0,Math.PI*2);ctx.fill()});
     }
-    function hit(mx,my){
-      for(let i=points.length-1;i>=0;i--){
-        if(Math.hypot(mx=t2x(points[i].t)-mx,my=v2y(points[i].v)-my)<8) return i;
-      } return -1;
-    }
-    editor.addEventListener('pointerdown',e=>{
-      const r=editor.getBoundingClientRect(); let mx=e.clientX-r.left, my=e.clientY-r.top;
-      const i=hit(mx,my);
-      if(i>=0){ selected=i; dragging=i; }
-      else{ points.push({t:x2t(mx),v:y2v(my)}); selected=points.length-1; dragging=selected; }
-      draw();
+    function hit(mx,my){ for(let i=points.length-1;i>=0;i--){ if(Math.hypot(mx-t2x(points[i].t),my-v2y(points[i].v))<8) return i; } return -1; }
+    editor.addEventListener('pointerdown',e=>{ const r=editor.getBoundingClientRect(); const mx=e.clientX-r.left, my=e.clientY-r.top;
+      const i=hit(mx,my); if(i>=0){ selected=i; dragging=i; } else { points.push({t:x2t(mx),v:y2v(my)}); selected=points.length-1; dragging=selected; } draw();
     });
-    editor.addEventListener('pointermove',e=>{
-      if(dragging==null) return;
-      const r=editor.getBoundingClientRect();
-      points[dragging]={ t:x2t(e.clientX-r.left), v:y2v(e.clientY-r.top) };
-      draw();
+    editor.addEventListener('pointermove',e=>{ if(dragging==null) return; const r=editor.getBoundingClientRect();
+      points[dragging]={ t:x2t(e.clientX-r.left), v:y2v(e.clientY-r.top) }; draw();
     });
     window.addEventListener('pointerup',()=>dragging=null);
     window.addEventListener('keydown',e=>{
       if(e.key==='Shift') stepMode=true;
-      if((e.key==='d'||e.key==='D') && selected>=0){ points.splice(selected,1); selected=-1; }
-      if((e.key==='r'||e.key==='R')){ points=[{t:0,v:0},{t:.25,v:1},{t:.5,v:0},{t:.75,v:-1},{t:1,v:0}]; }
-      draw();
+      if((e.key==='d'||e.key==='D') && selected>=0){ points.splice(selected,1); selected=-1; draw(); }
+      if((e.key==='r'||e.key==='R')){ points=[{t:0,v:0},{t:.25,v:1},{t:.5,v:0},{t:.75,v:-1},{t:1,v:0}]; draw(); }
     });
     window.addEventListener('keyup',e=>{ if(e.key==='Shift') stepMode=false; draw(); });
-    draw();
 
     // ===== Controls =====
     const routeSel = document.getElementById('route');
@@ -179,7 +178,6 @@
     const baseHz = document.getElementById('baseHz'), baseHzv=document.getElementById('baseHzv');
     const wtA=document.getElementById('wtA'), wtB=document.getElementById('wtB');
     const wtMix=document.getElementById('wtMix'), wtMixv=document.getElementById('wtMixv');
-
     const oct=document.getElementById('oct'), octv=document.getElementById('octv');
     const semi=document.getElementById('semi'), semiv=document.getElementById('semiv');
     const coarse=document.getElementById('coarse'), coarsev=document.getElementById('coarsev');
@@ -190,20 +188,30 @@
     depth.addEventListener('input',()=>{ depthv.textContent=(+depth.value).toFixed(2); });
     baseHz.addEventListener('input',()=>{ baseHzv.textContent=baseHz.value; setBaseFreq(); });
     wtMix.addEventListener('input',()=>{ wtMixv.textContent=(+wtMix.value).toFixed(2); setMix(); });
-    wtA.addEventListener('change',()=> rebuildIfRunning());
-    wtB.addEventListener('change',()=> rebuildIfRunning());
 
     [oct,semi,coarse,fine].forEach(inp=>{
       inp.addEventListener('input',()=>{
-        const vmap={octv,semiv,coarsev,finev}; vmap[inp.id+'v']? vmap[inp.id+'v'].textContent=inp.value : 0;
-        setDetune();  // update detune in cents
+        ({octv,semiv,coarsev,finev}[inp.id+'v'].textContent=inp.value);
+        setDetune(); 
       });
     });
+
+    // ===== Custom WT Editor =====
+    const customTarget = document.getElementById('customTarget');
+    const partialsWrap = document.getElementById('partialsWrap');
+    const applyCustom = document.getElementById('applyCustom');
+    const PARTS = 16;
+    const partialSliders = [];
+    for(let i=1;i<=PARTS;i++){
+      const lab=document.createElement('label');
+      lab.innerHTML = `P${i}<input type="range" min="0" max="1" step="0.01" value="${i===1?1:0}" style="height:80px;writing-mode:bt-lr;appearance:slider-vertical">`;
+      partialsWrap.appendChild(lab);
+      partialSliders.push(lab.querySelector('input'));
+    }
 
     // ===== Audio chain =====
     let oscA=null, oscB=null, gA=null, gB=null, filter=null, route='pitch';
     let raf=null, t0=0, running=false;
-
     routeSel.addEventListener('change',()=> route = routeSel.value);
 
     function evalCurveAt(n){
@@ -220,106 +228,135 @@
     }
 
     function totalDetuneCents(){
-      // Octave(±3)*1200 + Semitone(±12)*100 + Coarse(±24)*100 + Fine(±50)
       return (+oct.value)*1200 + (+semi.value)*100 + (+coarse.value)*100 + (+fine.value);
     }
-
     function setDetune(extraCents=0){
       const cents = totalDetuneCents() + extraCents;
       if(oscA) oscA.detune.value = cents;
       if(oscB) oscB.detune.value = cents;
     }
-
     function setBaseFreq(){
       if(oscA) oscA.frequency.value = +baseHz.value;
       if(oscB) oscB.frequency.value = +baseHz.value;
     }
-
     function setMix(){
-      const mix = +wtMix.value; // 0..1
+      const mix = +wtMix.value;
       if(gA) gA.gain.rampTo(1 - mix, 0.01);
       if(gB) gB.gain.rampTo(mix, 0.01);
     }
 
+    function makeCustomPeriodicWave(){
+      // Build Fourier partials from sliders (cosine series only -> classic 'partials' behavior)
+      const partials = [0]; // index 0 unused; Tone uses 'partials' amplitudes starting at 1
+      for(let i=0;i<PARTS;i++){ partials[i+1] = +partialSliders[i].value; }
+      return partials;
+    }
+
+    function applyCustomTo(target){
+      const partials = makeCustomPeriodicWave();
+      if(target==='A' && oscA){
+        oscA.set({ type:'custom', partials });
+      } else if(target==='B' && oscB){
+        oscB.set({ type:'custom', partials });
+      }
+    }
+    applyCustom.addEventListener('click',()=> applyCustomTo(customTarget.value));
+
+    function setWT(osc, which){
+      if(!osc) return;
+      if(which==='sine' || which==='sawtooth' || which==='square'){
+        osc.type = which;
+      } else if(which==='customA'){
+        osc.set({ type:'custom', partials: makeCustomPeriodicWave() });
+      } else if(which==='customB'){
+        osc.set({ type:'custom', partials: makeCustomPeriodicWave() });
+      }
+    }
+
     function rebuildChain(){
-      // dispose old
       [oscA,oscB,gA,gB,filter].forEach(n=>{ if(n){ n.dispose?.(); }});
-      // build new
       filter = new Tone.Filter(800, 'lowpass').toDestination();
       gA = new Tone.Gain(0.5).connect(filter);
       gB = new Tone.Gain(0.5).connect(filter);
 
-      oscA = new Tone.Oscillator(+baseHz.value || 220, wtA.value).connect(gA);
-      oscB = new Tone.Oscillator(+baseHz.value || 220, wtB.value).connect(gB);
+      oscA = new Tone.Oscillator(+baseHz.value || 220, 'sawtooth').connect(gA);
+      oscB = new Tone.Oscillator(+baseHz.value || 220, 'square').connect(gB);
+      setWT(oscA, wtA.value);
+      setWT(oscB, wtB.value);
 
       Tone.Transport.bpm.value = +bpm.value;
-      setDetune(0);
-      setMix();
-    }
-
-    function rebuildIfRunning(){
-      if(!running) return;
-      const wasRunning = running;
-      stopAudio();
-      rebuildChain();
-      startAudio();
+      setDetune(0); setMix();
     }
 
     function tick(){
       const secPerBar = 60 / (+bpm.value) * 4;
       const n=((Tone.now()-t0)/secPerBar)%1;
-      const val=evalCurveAt(n);      // -1..1
-      const amt=+depth.value;        // 0..1
+      const val=evalCurveAt(n), amt=+depth.value;
 
-      if(route==='pitch'){
-        // LFO → extra detune in cents (±1200 * depth)
-        const extra = val * amt * 1200;
-        setDetune(extra);
-      }else{
-        // LFO → filter cutoff (100..8000 scaled by depth)
+      if(route==='pitch'){ setDetune(val * amt * 1200); }
+      else{
         const min=100, max=8000;
-        const target = min + (max-min) * ((val*0.5+0.5) * amt);
-        filter.frequency.rampTo(target, 0.02);
+        filter.frequency.rampTo(min + (max-min) * ((val*0.5+0.5) * amt), 0.02);
       }
       raf=requestAnimationFrame(tick);
     }
 
-    function startAudio(){
-      oscA.start(); oscB.start();
-      t0 = Tone.now(); running = true; tick();
-    }
-    function stopAudio(){
-      cancelAnimationFrame(raf);
-      if(oscA){ oscA.stop(); }
-      if(oscB){ oscB.stop(); }
-      running = false;
+    function startAudio(){ oscA.start(); oscB.start(); t0 = Tone.now(); running = true; tick(); }
+    function stopAudio(){ cancelAnimationFrame(raf); if(oscA) oscA.stop(); if(oscB) oscB.stop(); running=false; }
+
+    document.getElementById('play').onclick = async () => { await Tone.start(); if(!running){ rebuildChain(); startAudio(); } };
+    document.getElementById('stop').onclick = () => { stopAudio(); setDetune(0); };
+
+    // ===== Keyboard mapping (FL-like) =====
+    // Z row = C3.. ; Q row = C4..
+    const keyToSemitone = {
+      // lower row (C3 row)
+      'z':0,'s':1,'x':2,'d':3,'c':4,'v':5,'g':6,'b':7,'h':8,'n':9,'j':10,'m':11,',':12,
+      // upper row (C4 row)
+      'q':12,'2':13,'w':14,'3':15,'e':16,'r':17,'5':18,'t':19,'6':20,'y':21,'7':22,'u':23,'i':24
+    };
+    let heldNotes = new Set();
+    function noteToFreq(m){ return 440 * Math.pow(2, (m-69)/12); }
+
+    function updateFromKeyboard(){
+      if(heldNotes.size===0) return;
+      const highest = Math.max(...Array.from(heldNotes));
+      const base = noteToFreq(highest);
+      baseHz.value = base.toFixed(2); baseHzv.textContent = baseHz.value;
+      setBaseFreq();
     }
 
-    // Play / Stop
-    document.getElementById('play').onclick = async () => {
-      await Tone.start();
-      if(!running){
-        rebuildChain();
-        startAudio();
+    window.addEventListener('keydown', (e)=>{
+      const k = e.key.toLowerCase();
+      if(keyToSemitone[k]!==undefined){
+        e.preventDefault();
+        const midiBase = 48; // C3
+        const midi = midiBase + keyToSemitone[k];
+        heldNotes.add(midi);
+        updateFromKeyboard();
       }
-    };
-    document.getElementById('stop').onclick = () => {
-      stopAudio();
-      // reset LFO influence on pitch
-      setDetune(0);
-    };
+    });
+    window.addEventListener('keyup', (e)=>{
+      const k = e.key.toLowerCase();
+      if(keyToSemitone[k]!==undefined){
+        const midiBase = 48;
+        heldNotes.delete(midiBase + keyToSemitone[k]);
+        // optional: on release, keep last note playing; do nothing
+      }
+    });
 
     // ===== Export / Reset =====
-    function dl(n,t,d){ const b=new Blob([d],{type:t}); const u=URL.createObjectURL(b);
-      const a=document.createElement('a'); a.href=u; a.download=n; a.click();
-      setTimeout(()=>URL.revokeObjectURL(u),1000);
-    }
+    function dl(n,t,d){ const b=new Blob([d],{type:t}); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download=n; a.click(); setTimeout(()=>URL.revokeObjectURL(u),1000); }
     document.getElementById('exportJson').onclick=()=>dl('lfo.json','application/json',JSON.stringify({points},null,2));
     document.getElementById('exportCSV').onclick=()=>{ let rows=['t,value']; const N=256;
       for(let i=0;i<N;i++){ const t=i/(N-1); rows.push(`${t.toFixed(3)},${evalCurveAt(t).toFixed(3)}`); }
       dl('lfo.csv','text/csv',rows.join('\n'));
     };
     document.getElementById('reset').onclick=()=>{ points=[{t:0,v:0},{t:.25,v:1},{t:.5,v:0},{t:.75,v:-1},{t:1,v:0}]; draw(); };
+
+    // init UI text
+    bpmv.textContent=bpm.value; smoothv.textContent=(+smooth.value).toFixed(2); depthv.textContent=(+depth.value).toFixed(2);
+    baseHzv.textContent=baseHz.value; wtMixv.textContent=(+wtMix.value).toFixed(2);
   });
   </script>
 </body>
