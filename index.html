@@ -3,95 +3,86 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Keyboard→Audio Test</title>
+<title>Bohemian – Audio Debug</title>
 <script src="https://unpkg.com/tone@14.8.49/build/Tone.js"></script>
 <style>
   body{background:#0b0f19;color:#e5e7eb;font-family:system-ui;margin:0;padding:24px}
-  .box{max-width:680px;margin:0 auto;background:#111827;border:1px solid #1f2937;border-radius:12px;padding:18px}
-  h1{margin:0 0 12px;font-size:18px}
-  code{background:#0a0f1f;border:1px solid #1f2937;border-radius:6px;padding:2px 6px}
+  .box{max-width:700px;margin:0 auto;background:#111827;border:1px solid #1f2937;border-radius:12px;padding:18px}
   .row{display:flex;gap:12px;flex-wrap:wrap}
-  .kv{background:#0a0f1f;border:1px solid #1f2937;border-radius:10px;padding:10px;min-width:140px}
-  .green{color:#10b981}
-  .red{color:#ef4444}
+  .kv{background:#0a0f1f;border:1px solid #1f2937;border-radius:10px;padding:10px;min-width:160px}
+  button{background:#0a0f1f;border:1px solid #374151;color:#e5e7eb;border-radius:8px;padding:8px 12px;cursor:pointer}
+  code{background:#0a0f1f;border:1px solid #1f2937;border-radius:6px;padding:2px 6px}
 </style>
 </head>
 <body>
 <div class="box">
-  <h1>Keyboard → Audio loopback (ping on keydown)</h1>
-  <p>Mapped rows: <code>Z X C V B N M , . /</code> (+ black keys <code>S D G H J</code>) and <code>Q W E R T Y U I O P [ ]</code> (+ <code>2 3 5 6 7 9 0</code>).</p>
-  <div class="row">
-    <div class="kv">Last key: <span id="k">-</span></div>
-    <div class="kv">Mapped semitone: <span id="semi">-</span></div>
-    <div class="kv">MIDI note: <span id="midi">-</span></div>
-    <div class="kv">Freq (Hz): <span id="hz">-</span></div>
-    <div class="kv">Audio: <span id="au" class="red">stopped</span></div>
+  <h1>Audio Debug</h1>
+  <p>Press any mapped key (Z/X/… or Q/W/…) to ping a note. Or click <button id="start">Start Audio</button> then <button id="beep">Beep</button>.</p>
+  <div class="row" style="margin:10px 0 16px">
+    <div class="kv">Tone loaded: <span id="tone">-</span></div>
+    <div class="kv">Context state: <span id="state">-</span></div>
+    <div class="kv">Last freq: <span id="freq">-</span></div>
+    <div class="kv">Errors: <span id="err">none</span></div>
   </div>
+  <p>Mapped rows: <code>Z X C V B N M , . /</code> (+ black: <code>S D G H J</code>) and <code>Q W E R T Y U I O P [ ]</code> (+ <code>2 3 5 6 7 9 0</code>).</p>
 </div>
 
 <script>
 (() => {
-  // 1) keyboard map (chromatic)
-  const keyToSemi = {
+  const $ = id => document.getElementById(id);
+  const sTone=$('tone'), sState=$('state'), sFreq=$('freq'), sErr=$('err');
+  const btnStart=$('start'), btnBeep=$('beep');
+
+  // 1) show Tone status
+  sTone.textContent = (typeof Tone!=='undefined') ? 'yes' : 'NO (Tone.js not loaded)';
+  function updateState(){ try{ sState.textContent = Tone.getContext().rawContext.state; }catch{ sState.textContent='(no ctx)'; } }
+  updateState();
+
+  // 2) super-minimal synth
+  let started=false, synth=null;
+  async function ensureAudio(){
+    if(started) return;
+    await Tone.start();                    // user gesture: keydown/click でOK
+    synth = new Tone.Synth({               // 1台だけ、確実に出るチェーン
+      oscillator:{ type:'sawtooth' },
+      envelope:{ attack:0.005, decay:0.1, sustain:0.0, release:0.1 }
+    }).toDestination();
+    started=true; updateState();
+  }
+
+  // 3) key → freq
+  const keyToSemi={
     'z':0,'s':1,'x':2,'d':3,'c':4,'v':5,'g':6,'b':7,'h':8,'n':9,'j':10,'m':11,',':12,'.':13,'/':14,
     'q':12,'2':13,'w':14,'3':15,'e':16,'r':17,'5':18,'t':19,'6':20,'y':21,'7':22,'u':23,'i':24,'9':25,'o':26,'0':27,'p':28,'[':29,']':31
   };
-  const baseMidi = 60; // C4 as center; we subtract 12 for the Z row to sit around C3
   const midiToFreq = m => 440 * Math.pow(2,(m-69)/12);
+  const baseMidi = 60; // C4中心
 
-  // 2) debug UI
-  const $ = id => document.getElementById(id);
-  const K=$('k'), S=$('semi'), M=$('midi'), H=$('hz'), A=$('au');
-  function show({k='-',semi='-',midi='-',hz='-', on=false}={}){
-    K.textContent = k; S.textContent = semi; M.textContent = midi; H.textContent = hz;
-    A.textContent = on ? 'running' : 'stopped';
-    A.className = on ? 'green' : 'red';
+  async function ping(freq){
+    try{
+      await ensureAudio();
+      sFreq.textContent = freq.toFixed(2)+' Hz';
+      synth.triggerAttackRelease(freq, '16n'); // 1/16拍のピン
+    }catch(e){
+      console.error(e); sErr.textContent = e && (e.message||String(e));
+      updateState();
+    }
   }
 
-  // 3) audio chain (mono ping)
-  let started = false;
-  let env, gain, osc;
-  function ensureAudio() {
-    if (started) return Promise.resolve();
-    return Tone.start().then(() => {
-      // Build minimal chain: Osc -> Gain -> Destination, amplitude envelope
-      gain = new Tone.Gain(0).toDestination();
-      env  = new Tone.AmplitudeEnvelope({attack:0.005, decay:0.15, sustain:0.0, release:0.1}).connect(gain);
-      osc  = new Tone.Oscillator(220, 'sine').connect(env).start();
-      started = true;
-      show({on:true});
-    });
-  }
-
-  // 4) handlers
-  const held = new Set();
-  window.addEventListener('keydown', async (e) => {
-    const k = e.key.toLowerCase();
-    if (!(k in keyToSemi)) return;
+  window.addEventListener('keydown', async (e)=>{
+    const k=e.key.toLowerCase(); if(!(k in keyToSemi)) return;
     e.preventDefault();
-
-    await ensureAudio(); // keydown itself is a user gesture → OK
-    const semi = keyToSemi[k];
-    const midi = baseMidi + semi - 12; // align lower row around C3
+    const midi = baseMidi + keyToSemi[k] - 12;         // Z列をC3付近に
     const hz = midiToFreq(midi);
-
-    // set freq, ping
-    osc.frequency.setValueAtTime(hz, Tone.now());
-    env.triggerAttackRelease(0.12);
-
-    held.add(k);
-    show({k, semi, midi, hz: hz.toFixed(2), on:true});
+    await ping(hz);
   });
 
-  window.addEventListener('keyup', (e) => {
-    const k = e.key.toLowerCase();
-    if (!(k in keyToSemi)) return;
-    held.delete(k);
-    // nothing special on release (ping already released)
-  });
+  // 4) buttons
+  btnStart.addEventListener('click', async ()=>{ try{ await ensureAudio(); }catch(e){ sErr.textContent=e.message||String(e); } });
+  btnBeep.addEventListener('click', async ()=>{ await ping(440); });
 
-  // initial
-  show();
+  // 5) native WebAudio fallback probe (optional)
+  // window.webaudioProbe = function(){ const ac=new (window.AudioContext||window.webkitAudioContext)(); const o=ac.createOscillator(); o.type='sine'; o.frequency.value=440; o.connect(ac.destination); ac.resume(); o.start(); setTimeout(()=>o.stop(),200); return 'ok'; };
 })();
 </script>
 </body>
