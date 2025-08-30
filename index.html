@@ -1,89 +1,240 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Bohemian – Audio Debug</title>
-<script src="https://unpkg.com/tone@14.8.49/build/Tone.js"></script>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Bohemian</title>
+<link rel="icon" href="/favicon.ico">
 <style>
-  body{background:#0b0f19;color:#e5e7eb;font-family:system-ui;margin:0;padding:24px}
-  .box{max-width:700px;margin:0 auto;background:#111827;border:1px solid #1f2937;border-radius:12px;padding:18px}
-  .row{display:flex;gap:12px;flex-wrap:wrap}
-  .kv{background:#0a0f1f;border:1px solid #1f2937;border-radius:10px;padding:10px;min-width:160px}
-  button{background:#0a0f1f;border:1px solid #374151;color:#e5e7eb;border-radius:8px;padding:8px 12px;cursor:pointer}
-  code{background:#0a0f1f;border:1px solid #1f2937;border-radius:6px;padding:2px 6px}
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
+  :root{--bg:#050510;--panel:#0f1423;--line:#1f2937;--fg:#e5e7eb;--mut:#94a3b8;--brand:#8b5cf6}
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:'Orbitron',sans-serif}
+  h1{font-size:28px;margin:12px 0;text-align:center;background:linear-gradient(90deg,#8b5cf6,#06b6d4);
+     -webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .wrap{max-width:1120px;margin:0 auto;padding:16px}
+  .card{background:rgba(15,20,35,.9);border:1px solid var(--line);border-radius:18px;padding:16px 16px 18px;margin:12px 0;
+        box-shadow:0 16px 36px rgba(0,0,0,.45);backdrop-filter:blur(8px)}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:center}
+  label{font-size:13px;color:#9ca3af;display:flex;gap:8px;align-items:center}
+  select{background:#0a0f1f;color:#e5e7eb;border:1px solid #374151;border-radius:10px;padding:6px 8px}
+  input[type=range]{accent-color:var(--brand)}
+  .num{display:inline-block;min-width:44px;text-align:right}
+  canvas.wave{display:block;background:#0a0f1f;border:1px solid #1c2233;border-radius:12px;box-shadow:0 0 10px rgba(139,92,246,.28)}
+  .cap{font-size:12px;color:var(--mut);text-align:center;margin-top:6px}
+  .sliders{display:grid;grid-template-columns:repeat(8,1fr);gap:8px;margin-top:8px}
+  .sliders label{display:flex;flex-direction:column;align-items:center;font-size:10px;color:#94a3b8}
+  .kbd{font-family:ui-monospace,monospace;background:#0a0f1f;border:1px solid #1f2937;border-radius:6px;padding:2px 6px}
+  .kbdwrap{position:relative;width:420px;height:120px;margin:10px auto 0}
+  .key{width:28px;height:110px;background:#fff;border:1px solid #999;border-bottom:3px solid #bbb;border-radius:4px;position:relative;display:inline-block;margin-right:2px}
+  .bkey{position:absolute;width:20px;height:70px;background:#111;border:1px solid #222;border-bottom:3px solid #000;border-radius:4px;left:20px;top:0;z-index:2}
+  .on{outline:2px solid #06b6d4;outline-offset:-2px}
 </style>
+<script src="https://unpkg.com/tone@14.8.49/build/Tone.js"></script>
 </head>
 <body>
-<div class="box">
-  <h1>Audio Debug</h1>
-  <p>Press any mapped key (Z/X/… or Q/W/…) to ping a note. Or click <button id="start">Start Audio</button> then <button id="beep">Beep</button>.</p>
-  <div class="row" style="margin:10px 0 16px">
-    <div class="kv">Tone loaded: <span id="tone">-</span></div>
-    <div class="kv">Context state: <span id="state">-</span></div>
-    <div class="kv">Last freq: <span id="freq">-</span></div>
-    <div class="kv">Errors: <span id="err">none</span></div>
+<div class="wrap">
+  <h1>⚡ Bohemian ⚡</h1>
+
+  <!-- A/B wavetable panels -->
+  <div class="card">
+    <div class="row" style="align-items:flex-start">
+      <div style="flex:1 1 480px;min-width:300px">
+        <div class="row" style="justify-content:space-between">
+          <label>WT A
+            <select id="wtA">
+              <option value="sine">Sine</option>
+              <option value="saw" selected>Saw</option>
+              <option value="square">Square</option>
+              <option value="customA">Custom (A)</option>
+            </select>
+          </label>
+          <label>WT Mix
+            <input id="wtMix" type="range" min="0" max="1" step="0.01" value="0.50">
+            <span id="wtMixv" class="num">0.50</span>
+          </label>
+        </div>
+        <canvas id="waveA" class="wave" width="520" height="140"></canvas>
+        <div class="cap">A waveform</div>
+      </div>
+      <div style="flex:1 1 480px;min-width:300px">
+        <div class="row" style="justify-content:flex-start">
+          <label>WT B
+            <select id="wtB">
+              <option value="sine">Sine</option>
+              <option value="saw">Saw</option>
+              <option value="square" selected>Square</option>
+              <option value="customB">Custom (B)</option>
+            </select>
+          </label>
+        </div>
+        <canvas id="waveB" class="wave" width="520" height="140"></canvas>
+        <div class="cap">B waveform</div>
+      </div>
+    </div>
   </div>
-  <p>Mapped rows: <code>Z X C V B N M , . /</code> (+ black: <code>S D G H J</code>) and <code>Q W E R T Y U I O P [ ]</code> (+ <code>2 3 5 6 7 9 0</code>).</p>
+
+  <!-- Keyboard + pitch/filter -->
+  <div class="card">
+    <div class="row">
+      <label>Base (MIDI)
+        <input id="baseMidi" type="range" min="36" max="84" step="1" value="60"><span id="baseMidiv" class="num">60</span>
+      </label>
+      <label>Oct <input id="oct" type="range" min="-3" max="3" step="1" value="0"><span id="octv" class="num">0</span></label>
+      <label>Semi <input id="semi" type="range" min="-12" max="12" step="1" value="0"><span id="semiv" class="num">0</span></label>
+      <label>Coarse <input id="coarse" type="range" min="-24" max="24" step="1" value="0"><span id="coarsev" class="num">0</span></label>
+      <label>Fine (¢) <input id="fine" type="range" min="-50" max="50" step="1" value="0"><span id="finev" class="num">0</span></label>
+      <label>Cutoff <input id="cut" type="range" min="100" max="10000" step="1" value="5000"><span id="cutv" class="num">5000</span></label>
+      <label>Reso <input id="q" type="range" min="0.1" max="20" step="0.1" value="0.8"><span id="qv" class="num">0.8</span></label>
+      <label>Attack <input id="att" type="range" min="0" max="1" step="0.01" value="0.01"><span id="attv" class="num">0.01</span></label>
+      <label>Release <input id="rel" type="range" min="0" max="3" step="0.01" value="0.3"><span id="relv" class="num">0.30</span></label>
+    </div>
+
+    <!-- Clickable mini-piano (2 octaves) -->
+    <div class="kbdwrap" id="piano"></div>
+    <p class="cap">
+      Keys: <span class="kbd">Z X C V B N M , . /</span> (+ <span class="kbd">S D G H J</span>) ·
+      <span class="kbd">Q W E R T Y U I O P [ ]</span> (+ <span class="kbd">2 3 5 6 7 9 0</span>)
+    </p>
+  </div>
+
+  <!-- Custom partials -->
+  <div class="card">
+    <div class="row">
+      <strong>Custom Wavetable (16 partials)</strong>
+      <label>Target <select id="customTarget"><option value="A">Apply → A</option><option value="B">Apply → B</option></select></label>
+      <button id="applyCustom">Apply</button>
+    </div>
+    <div class="sliders" id="partialsWrap"></div>
+    <p class="cap">Tip: P1=1 is sine. Add upper partials for color. Click Apply to update & render.</p>
+  </div>
 </div>
 
 <script>
-(() => {
-  const $ = id => document.getElementById(id);
-  const sTone=$('tone'), sState=$('state'), sFreq=$('freq'), sErr=$('err');
-  const btnStart=$('start'), btnBeep=$('beep');
+window.addEventListener('load', () => {
+  // ---------- DOM ----------
+  const wtA=document.getElementById('wtA'), wtB=document.getElementById('wtB');
+  const wtMix=document.getElementById('wtMix'), wtMixv=document.getElementById('wtMixv');
+  const baseMidi=document.getElementById('baseMidi'), baseMidiv=document.getElementById('baseMidiv');
+  const oct=document.getElementById('oct'), octv=document.getElementById('octv');
+  const semi=document.getElementById('semi'), semiv=document.getElementById('semiv');
+  const coarse=document.getElementById('coarse'), coarsev=document.getElementById('coarsev');
+  const fine=document.getElementById('fine'), finev=document.getElementById('finev');
+  const cut=document.getElementById('cut'), cutv=document.getElementById('cutv');
+  const q=document.getElementById('q'), qv=document.getElementById('qv');
+  const att=document.getElementById('att'), attv=document.getElementById('attv');
+  const rel=document.getElementById('rel'), relv=document.getElementById('relv');
+  const waveA=document.getElementById('waveA'), waveB=document.getElementById('waveB');
+  const ctxA=waveA.getContext('2d'), ctxB=waveB.getContext('2d');
 
-  // 1) show Tone status
-  sTone.textContent = (typeof Tone!=='undefined') ? 'yes' : 'NO (Tone.js not loaded)';
-  function updateState(){ try{ sState.textContent = Tone.getContext().rawContext.state; }catch{ sState.textContent='(no ctx)'; } }
-  updateState();
+  const fmt=(x,d=2)=>Number(x).toFixed(d);
+  wtMix.addEventListener('input',()=> wtMixv.textContent=fmt(wtMix.value,2));
+  baseMidi.addEventListener('input',()=> baseMidiv.textContent=baseMidi.value);
+  ;[oct,semi,coarse,fine].forEach(x=>x.addEventListener('input',()=>({octv,semiv,coarsev,finev}[x.id+'v'].textContent=x.value)));
+  ;[cut,q].forEach(x=>x.addEventListener('input',()=>({cutv,qv}[x.id+'v'].textContent= x===q?fmt(q.value,1):fmt(cut.value,0)));
+  att.addEventListener('input',()=> attv.textContent=fmt(att.value,2));
+  rel.addEventListener('input',()=> relv.textContent=fmt(rel.value,2));
 
-  // 2) super-minimal synth
-  let started=false, synth=null;
-  async function ensureAudio(){
-    if(started) return;
-    await Tone.start();                    // user gesture: keydown/click でOK
-    synth = new Tone.Synth({               // 1台だけ、確実に出るチェーン
-      oscillator:{ type:'sawtooth' },
-      envelope:{ attack:0.005, decay:0.1, sustain:0.0, release:0.1 }
-    }).toDestination();
-    started=true; updateState();
+  // ---------- Custom partials ----------
+  const customTarget=document.getElementById('customTarget');
+  const partialsWrap=document.getElementById('partialsWrap');
+  const applyCustom=document.getElementById('applyCustom');
+  const PARTS=16, partialSliders=[];
+  for(let i=1;i<=PARTS;i++){
+    const lab=document.createElement('label');
+    lab.innerHTML=`P${i}<input type="range" min="0" max="1" step="0.01" value="${i===1?1:0}"
+                  style="height:90px;writing-mode:bt-lr;appearance:slider-vertical">`;
+    partialsWrap.appendChild(lab);
+    partialSliders.push(lab.querySelector('input'));
+  }
+  const getPartials=()=>{ const a=[0]; for(let i=0;i<PARTS;i++) a[i+1]=+partialSliders[i].value; return a; };
+  let partialsA=getPartials(), partialsB=getPartials();
+
+  // ---------- Waveform renderers ----------
+  function drawWave(ctx, type, partials){
+    const W=ctx.canvas.width, H=ctx.canvas.height;
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle='#0a0f1f'; ctx.fillRect(0,0,W,H);
+    ctx.strokeStyle='#22304a'; ctx.beginPath(); ctx.moveTo(0,H/2); ctx.lineTo(W,H/2); ctx.stroke();
+    const N=1024; const y=new Float32Array(N);
+    for(let i=0;i<N;i++){
+      const t=i/N; let v=0;
+      if(type==='sine'){ v=Math.sin(2*Math.PI*t); }
+      else if(type==='saw'){ v=2*(t-0.5); }
+      else if(type==='square'){ v=(Math.sin(2*Math.PI*t)>=0?1:-1); }
+      else { for(let n=1;n<partials.length;n++){ v += (partials[n]||0)*Math.sin(2*Math.PI*n*t); }
+             const max = Math.max(1, ...partials); v/=Math.max(1,max); }
+      y[i]=v;
+    }
+    ctx.strokeStyle='#8b5cf6'; ctx.lineWidth=2; ctx.beginPath();
+    for(let i=0;i<N;i++){
+      const px=i/(N-1)*(W-16)+8, py=H/2 - y[i]*(H*0.4);
+      if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+    }
+    ctx.stroke();
+  }
+  function refreshWaves(){
+    const aType=wtA.value==='customA'?'custom':wtA.value;
+    const bType=wtB.value==='customB'?'custom':wtB.value;
+    drawWave(ctxA,aType, aType==='custom'?partialsA:[0]);
+    drawWave(ctxB,bType, bType==='custom'?partialsB:[0]);
   }
 
-  // 3) key → freq
+  // ---------- Keyboard mapping (chromatic) ----------
   const keyToSemi={
     'z':0,'s':1,'x':2,'d':3,'c':4,'v':5,'g':6,'b':7,'h':8,'n':9,'j':10,'m':11,',':12,'.':13,'/':14,
     'q':12,'2':13,'w':14,'3':15,'e':16,'r':17,'5':18,'t':19,'6':20,'y':21,'7':22,'u':23,'i':24,'9':25,'o':26,'0':27,'p':28,'[':29,']':31
   };
-  const midiToFreq = m => 440 * Math.pow(2,(m-69)/12);
-  const baseMidi = 60; // C4中心
+  const held=new Set();
+  const midiToFreq=m=>440*Math.pow(2,(m-69)/12);
 
-  async function ping(freq){
-    try{
-      await ensureAudio();
-      sFreq.textContent = freq.toFixed(2)+' Hz';
-      synth.triggerAttackRelease(freq, '16n'); // 1/16拍のピン
-    }catch(e){
-      console.error(e); sErr.textContent = e && (e.message||String(e));
-      updateState();
-    }
+  // ---------- Synth engine (mono A+B) ----------
+  let started=false;
+  let oscA=null, oscB=null, ampEnv=null, amp=null, filter=null;
+
+  function totalDetuneCents(){ return (+oct.value)*1200 + (+semi.value)*100 + (+coarse.value)*100 + (+fine.value); }
+  function setWT(osc, which, partials){ if(!osc) return;
+    if(which==='sine') osc.type='sine';
+    else if(which==='saw') osc.type='sawtooth';
+    else if(which==='square') osc.type='square';
+    else osc.set({type:'custom', partials});
+  }
+  function setMix(){ if(!oscA||!oscB) return;
+    const mix=+wtMix.value; oscA.volume.value = Tone.gainToDb(1-mix); oscB.volume.value = Tone.gainToDb(mix);
   }
 
-  window.addEventListener('keydown', async (e)=>{
-    const k=e.key.toLowerCase(); if(!(k in keyToSemi)) return;
-    e.preventDefault();
-    const midi = baseMidi + keyToSemi[k] - 12;         // Z列をC3付近に
-    const hz = midiToFreq(midi);
-    await ping(hz);
-  });
+  async function ensure(){             // キー押下のジェスチャ内でだけ呼ばれる
+    if(started) return;
+    await Tone.start();
+    filter = new Tone.Filter(+cut.value,'lowpass'); filter.Q.value=+q.value;
+    amp    = new Tone.Gain(0).connect(filter).toDestination();
+    ampEnv = new Tone.AmplitudeEnvelope({attack:+att.value,decay:0.08,sustain:0.85,release:+rel.value}).connect(amp);
+    const baseHz = midiToFreq(+baseMidi.value);
+    oscA = new Tone.Oscillator(baseHz,'sawtooth').connect(ampEnv);
+    oscB = new Tone.Oscillator(baseHz,'square').connect(ampEnv);
+    setWT(oscA, wtA.value==='customA'?'custom':wtA.value, partialsA);
+    setWT(oscB, wtB.value==='customB'?'custom':wtB.value, partialsB);
+    oscA.detune.value = totalDetuneCents();
+    oscB.detune.value = totalDetuneCents();
+    oscA.start(); oscB.start();
+    setMix();
+    started=true;
+  }
 
-  // 4) buttons
-  btnStart.addEventListener('click', async ()=>{ try{ await ensureAudio(); }catch(e){ sErr.textContent=e.message||String(e); } });
-  btnBeep.addEventListener('click', async ()=>{ await ping(440); });
+  function noteOn(midi){
+    const hz=midiToFreq(midi);
+    oscA.frequency.setValueAtTime(hz, Tone.now());
+    oscB.frequency.setValueAtTime(hz, Tone.now());
+    oscA.detune.value = totalDetuneCents();
+    oscB.detune.value = totalDetuneCents();
+    ampEnv.triggerAttack();
+  }
+  function noteOff(){ ampEnv.triggerRelease(); }
 
-  // 5) native WebAudio fallback probe (optional)
-  // window.webaudioProbe = function(){ const ac=new (window.AudioContext||window.webkitAudioContext)(); const o=ac.createOscillator(); o.type='sine'; o.frequency.value=440; o.connect(ac.destination); ac.resume(); o.start(); setTimeout(()=>o.stop(),200); return 'ok'; };
-})();
-</script>
-</body>
-</html>
+  // Piano UI（白鍵＋黒鍵）
+  const piano=document.getElementById('piano');
+  const whiteSemis=[0,2,4,5,7,9,11,12,14,16,17,19,21,23];
+  whiteSemis.forEach(semi=>{ const k=document.createElement('div'); k.className='key'; k.dataset.semi=semi; piano.appendChild(k); });
+  const blackMap={1:18,3:46,6:102,8:130,10:158,13:214,15:242,18:298,20:326,22:354};
+  Object.entries(blackMap).forEach(([semi,left])=>{ const b=document.createElement('div'); b.className='bkey'; b.style.left=left+'px'; b.dataset.semi=semi; piano.appendChild(b); });
+  function highlight(semi,on){ const el=piano.querySelector(`[data-semi="${semi}"]`); if(el){ el.classList.toggle('on',on);} }
+  piano.addEventListener(
