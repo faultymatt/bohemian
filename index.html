@@ -3,179 +3,324 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Bohemian – Browser Synth</title>
+  <title>Bohemian – Browser Wavetable Synth (A/B + Serum-style Pitch)</title>
   <link rel="icon" href="/favicon.ico">
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
-    html,body{height:100%;margin:0;background:#050510;color:#f3f4f6;font-family:'Orbitron', sans-serif;overflow-x:hidden}
+    html,body{height:100%;margin:0;background:#050510;color:#f3f4f6;font-family:'Orbitron',sans-serif;overflow-x:hidden}
     h1{font-size:28px;margin:0 0 8px;text-align:center;background:linear-gradient(90deg,#8b5cf6,#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-    .wrap{max-width:1000px;margin:0 auto;padding:32px}
-    .card{background:rgba(15,20,35,0.85);border:1px solid #1f2937;border-radius:20px;padding:20px;box-shadow:0 20px 40px rgba(0,0,0,0.5);backdrop-filter:blur(10px)}
-    canvas{display:block;background:#0a0f1f;border-radius:12px;border:1px solid #1c2233;box-shadow:0 0 10px rgba(139,92,246,0.3)}
+    .wrap{max-width:1100px;margin:0 auto;padding:32px}
+    .card{background:rgba(15,20,35,.85);border:1px solid #1f2937;border-radius:20px;padding:20px;box-shadow:0 20px 40px rgba(0,0,0,.5);backdrop-filter:blur(10px)}
+    canvas{display:block;background:#0a0f1f;border-radius:12px;border:1px solid #1c2233;box-shadow:0 0 10px rgba(139,92,246,.3)}
     .btn{border:0;border-radius:12px;padding:10px 18px;font-size:14px;cursor:pointer;font-family:'Orbitron';transition:.2s}
-    .btn.primary{background:linear-gradient(135deg,#7c3aed,#06b6d4);color:white;box-shadow:0 0 15px rgba(139,92,246,0.5)}
+    .btn.primary{background:linear-gradient(135deg,#7c3aed,#06b6d4);color:#fff;box-shadow:0 0 15px rgba(139,92,246,.5)}
     .btn.primary:hover{transform:scale(1.05)}
     .btn.ghost{background:transparent;color:#9ca3af;border:1px solid #374151}
-    .btn.ghost:hover{color:white;border-color:#8b5cf6}
+    .btn.ghost:hover{color:#fff;border-color:#8b5cf6}
     label{font-size:13px;color:#9ca3af;margin-right:8px}
     input[type="range"]{accent-color:#8b5cf6}
-    .panel{margin-top:20px}
+    select{background:#0a0f1f;color:#e5e7eb;border:1px solid #374151;border-radius:10px;padding:8px}
+    .row{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;align-items:center}
     .hint{color:#6b7280;font-size:12px;text-align:center;margin-top:10px}
+    .group{display:flex;gap:10px;align-items:center}
+    .num{display:inline-block;min-width:48px;text-align:right}
   </style>
   <script src="https://unpkg.com/tone@14.8.49/build/Tone.js"></script>
 </head>
 <body>
   <div class="wrap">
     <h1>⚡ Bohemian ⚡</h1>
-    <div class="card">
-      <canvas id="editor" width="900" height="260"></canvas>
-      <div style="display:flex;gap:12px;margin-top:14px;flex-wrap:wrap;justify-content:center">
+    <div class="card" style="margin-bottom:16px">
+      <canvas id="editor" width="980" height="260"></canvas>
+      <div class="row" style="margin-top:14px">
         <button id="play" class="btn primary">▶ Play</button>
         <button id="stop" class="btn ghost">■ Stop</button>
         <button id="exportJson" class="btn ghost">Export JSON</button>
         <button id="exportCSV" class="btn ghost">Export CSV</button>
-        <button id="reset" class="btn ghost">Reset</button>
+        <button id="reset" class="btn ghost">Reset Curve</button>
       </div>
-      <div class="panel" style="text-align:center;margin-top:20px">
-        <label>BPM: <input id="bpm" type="range" min="40" max="200" value="120"> <span id="bpmv">120</span></label>
-        <label>Smooth: <input id="smooth" type="range" min="0" max="1" value="0.5" step="0.05"> <span id="smoothv">0.50</span></label>
+      <div class="row" style="margin-top:10px">
+        <label>Route:
+          <select id="route">
+            <option value="pitch">Pitch</option>
+            <option value="filter">Filter</option>
+          </select>
+        </label>
+        <label>BPM:
+          <input id="bpm" type="range" min="40" max="200" value="120"> <span id="bpmv" class="num">120</span>
+        </label>
+        <label>Smooth:
+          <input id="smooth" type="range" min="0" max="1" value="0.5" step="0.05"> <span id="smoothv" class="num">0.50</span>
+        </label>
+        <label>Depth (LFO):
+          <input id="depth" type="range" min="0" max="1" step="0.01" value="0.30"> <span id="depthv" class="num">0.30</span>
+        </label>
       </div>
     </div>
-    <p class="hint">Draw the curve and modulate sound. Shift = step mode, D = delete point, R = reset.</p>
+
+    <div class="card">
+      <div class="row">
+        <div class="group">
+          <strong>WT A</strong>
+          <select id="wtA">
+            <option value="sine">Sine</option>
+            <option value="triangle">Triangle</option>
+            <option value="square">Square</option>
+            <option value="sawtooth" selected>Saw</option>
+            <option value="fatsawtooth">Fat Saw</option>
+            <option value="pwm">PWM</option>
+          </select>
+        </div>
+        <div class="group">
+          <strong>WT B</strong>
+          <select id="wtB">
+            <option value="sine">Sine</option>
+            <option value="triangle">Triangle</option>
+            <option value="square">Square</option>
+            <option value="sawtooth">Saw</option>
+            <option value="fatsawtooth" selected>Fat Saw</option>
+            <option value="pwm">PWM</option>
+          </select>
+        </div>
+        <label>WT Mix (A↔B):
+          <input id="wtMix" type="range" min="0" max="1" step="0.01" value="0.5"> <span id="wtMixv" class="num">0.50</span>
+        </label>
+      </div>
+
+      <hr style="border:none;border-top:1px solid #1f2937;margin:14px 0">
+
+      <div class="row">
+        <label>Base Freq (Hz):
+          <input id="baseHz" type="range" min="40" max="1000" step="1" value="220"> <span id="baseHzv" class="num">220</span>
+        </label>
+
+        <!-- Serum-style pitch controls -->
+        <label>Octave:
+          <input id="oct" type="range" min="-3" max="3" step="1" value="0"> <span id="octv" class="num">0</span>
+        </label>
+        <label>Semitone:
+          <input id="semi" type="range" min="-12" max="12" step="1" value="0"> <span id="semiv" class="num">0</span>
+        </label>
+        <label>Coarse:
+          <input id="coarse" type="range" min="-24" max="24" step="1" value="0"> <span id="coarsev" class="num">0</span>
+        </label>
+        <label>Fine (cents):
+          <input id="fine" type="range" min="-50" max="50" step="1" value="0"> <span id="finev" class="num">0</span>
+        </label>
+      </div>
+    </div>
+
+    <p class="hint">
+      Draw the curve to modulate Pitch (detune in cents) or Filter cutoff. <br/>
+      Shortcuts: Shift = step mode, D = delete point, R = reset curve.
+    </p>
   </div>
 
-<script>
-window.addEventListener('load', () => {
-  const editor=document.getElementById('editor');
-  const ctx=editor.getContext('2d');
-  const W=editor.width,H=editor.height,pad=20;
-  const inner={x:pad,y:pad,w:W-pad*2,h:H-pad*2};
-  let points=[{t:0,v:0},{t:.25,v:1},{t:.5,v:0},{t:.75,v:-1},{t:1,v:0}];
-  let dragging=null,selected=-1,stepMode=false;
+  <script>
+  window.addEventListener('load', () => {
+    // ===== Curve editor =====
+    const editor=document.getElementById('editor');
+    const ctx=editor.getContext('2d');
+    const W=editor.width,H=editor.height,pad=20;
+    const inner={x:pad,y:pad,w:W-pad*2,h:H-pad*2};
+    let points=[{t:0,v:0},{t:.25,v:1},{t:.5,v:0},{t:.75,v:-1},{t:1,v:0}];
+    let dragging=null,selected=-1,stepMode=false;
 
-  function t2x(t){return inner.x+t*inner.w}
-  function v2y(v){return inner.y+(1-(v+1)/2)*inner.h}
-  function x2t(x){return Math.max(0,Math.min(1,(x-inner.x)/inner.w))}
-  function y2v(y){return Math.max(-1,Math.min(1,(1-(y-inner.y)/inner.h)*2-1))}
+    const clamp=(v,min,max)=>Math.min(max,Math.max(min,v));
+    const t2x=t=>inner.x+t*inner.w, v2y=v=>inner.y+(1-(v+1)/2)*inner.h;
+    const x2t=x=>clamp((x-inner.x)/inner.w,0,1);
+    const y2v=y=>clamp((1-(y-inner.y)/inner.h)*2-1,-1,1);
 
-  function draw(){
-    ctx.clearRect(0,0,W,H);
-    ctx.strokeStyle='#8b5cf6';ctx.lineWidth=2;ctx.beginPath();
-    points.sort((a,b)=>a.t-b.t);
-    for(let i=0;i<points.length;i++){
-      const p=points[i],x=t2x(p.t),y=v2y(p.v);
-      if(i===0)ctx.moveTo(x,y);
-      else{ if(stepMode){const prev=points[i-1];ctx.lineTo(x,v2y(prev.v));} ctx.lineTo(x,y); }
-    }
-    ctx.stroke();
-    points.forEach((p,i)=>{ctx.fillStyle=i===selected?'#c084fc':'#60a5fa';ctx.beginPath();ctx.arc(t2x(p.t),v2y(p.v),6,0,Math.PI*2);ctx.fill()});
-  }
-
-  function hit(mx,my){
-    for(let i=points.length-1;i>=0;i--){
-      if(Math.hypot(mx-t2x(points[i].t),my-v2y(points[i].v))<8) return i;
-    } return -1;
-  }
-
-  editor.addEventListener('pointerdown',e=>{
-    const r=editor.getBoundingClientRect(); const mx=e.clientX-r.left, my=e.clientY-r.top;
-    const i=hit(mx,my);
-    if(i>=0){ selected=i; dragging=i; }
-    else{ points.push({t:x2t(mx),v:y2v(my)}); selected=points.length-1; dragging=selected; }
-    draw();
-  });
-  editor.addEventListener('pointermove',e=>{
-    if(dragging==null) return;
-    const r=editor.getBoundingClientRect();
-    points[dragging]={ t:x2t(e.clientX-r.left), v:y2v(e.clientY-r.top) };
-    draw();
-  });
-  window.addEventListener('pointerup',()=>dragging=null);
-  window.addEventListener('keydown',e=>{
-    if(e.key==='Shift') stepMode=true;
-    if((e.key==='d'||e.key==='D') && selected>=0){ points.splice(selected,1); selected=-1; }
-    if((e.key==='r'||e.key==='R')){ points=[{t:0,v:0},{t:.25,v:1},{t:.5,v:0},{t:.75,v:-1},{t:1,v:0}]; }
-    draw();
-  });
-  window.addEventListener('keyup',e=>{ if(e.key==='Shift') stepMode=false; draw(); });
-  draw();
-
-  // ---------- Audio ----------
-  let synth = null;
-  let raf=null, t0=0, running=false;
-
-  function evalCurveAt(n){
-    for(let i=0;i<points.length-1;i++){
-      const a=points[i], b=points[i+1];
-      if(n>=a.t && n<=b.t){
-        const u=(n-a.t)/(b.t-a.t||1e-6);
-        const s = Number(document.getElementById('smooth').value);
-        const uu = s>0 ? (u*u*(3-2*u))*s + u*(1-s) : u;
-        return a.v + (b.v-a.v)*uu;
+    function draw(){
+      ctx.clearRect(0,0,W,H);
+      ctx.strokeStyle='#8b5cf6';ctx.lineWidth=2;ctx.beginPath();
+      points.sort((a,b)=>a.t-b.t);
+      for(let i=0;i<points.length;i++){
+        const p=points[i],x=t2x(p.t),y=v2y(p.v);
+        if(i===0)ctx.moveTo(x,y);
+        else{ if(stepMode){const prev=points[i-1];ctx.lineTo(x,v2y(prev.v));} ctx.lineTo(x,y); }
       }
+      ctx.stroke();
+      points.forEach((p,i)=>{ctx.fillStyle=i===selected?'#c084fc':'#60a5fa';ctx.beginPath();ctx.arc(t2x(p.t),v2y(p.v),6,0,Math.PI*2);ctx.fill()});
     }
-    return points[points.length-1].v;
-  }
-
-  function tick(){
-    const bpm = Number(document.getElementById('bpm').value);
-    const secPerBar = 60 / bpm * 4;
-    const n=((Tone.now()-t0)/secPerBar)%1;
-    const val=evalCurveAt(n);
-    if(synth){
-      const base=220, depth=0.3;
-      synth.frequency.rampTo(base*(1+val*depth), 0.02);
+    function hit(mx,my){
+      for(let i=points.length-1;i>=0;i--){
+        if(Math.hypot(mx=t2x(points[i].t)-mx,my=v2y(points[i].v)-my)<8) return i;
+      } return -1;
     }
-    raf=requestAnimationFrame(tick);
-  }
+    editor.addEventListener('pointerdown',e=>{
+      const r=editor.getBoundingClientRect(); let mx=e.clientX-r.left, my=e.clientY-r.top;
+      const i=hit(mx,my);
+      if(i>=0){ selected=i; dragging=i; }
+      else{ points.push({t:x2t(mx),v:y2v(my)}); selected=points.length-1; dragging=selected; }
+      draw();
+    });
+    editor.addEventListener('pointermove',e=>{
+      if(dragging==null) return;
+      const r=editor.getBoundingClientRect();
+      points[dragging]={ t:x2t(e.clientX-r.left), v:y2v(e.clientY-r.top) };
+      draw();
+    });
+    window.addEventListener('pointerup',()=>dragging=null);
+    window.addEventListener('keydown',e=>{
+      if(e.key==='Shift') stepMode=true;
+      if((e.key==='d'||e.key==='D') && selected>=0){ points.splice(selected,1); selected=-1; }
+      if((e.key==='r'||e.key==='R')){ points=[{t:0,v:0},{t:.25,v:1},{t:.5,v:0},{t:.75,v:-1},{t:1,v:0}]; }
+      draw();
+    });
+    window.addEventListener('keyup',e=>{ if(e.key==='Shift') stepMode=false; draw(); });
+    draw();
 
-  const playBtn=document.getElementById('play');
-  const stopBtn=document.getElementById('stop');
-  const bpm=document.getElementById('bpm');
-  const bpmv=document.getElementById('bpmv');
-  const smooth=document.getElementById('smooth');
-  const smoothv=document.getElementById('smoothv');
+    // ===== Controls =====
+    const routeSel = document.getElementById('route');
+    const bpm = document.getElementById('bpm'), bpmv=document.getElementById('bpmv');
+    const smooth = document.getElementById('smooth'), smoothv=document.getElementById('smoothv');
+    const depth = document.getElementById('depth'), depthv=document.getElementById('depthv');
+    const baseHz = document.getElementById('baseHz'), baseHzv=document.getElementById('baseHzv');
+    const wtA=document.getElementById('wtA'), wtB=document.getElementById('wtB');
+    const wtMix=document.getElementById('wtMix'), wtMixv=document.getElementById('wtMixv');
 
-  bpm.addEventListener('input',()=>{ bpmv.textContent=bpm.value; Tone.Transport.bpm.value = Number(bpm.value); });
-  smooth.addEventListener('input',()=>{ smoothv.textContent=Number(smooth.value).toFixed(2); });
+    const oct=document.getElementById('oct'), octv=document.getElementById('octv');
+    const semi=document.getElementById('semi'), semiv=document.getElementById('semiv');
+    const coarse=document.getElementById('coarse'), coarsev=document.getElementById('coarsev');
+    const fine=document.getElementById('fine'), finev=document.getElementById('finev');
 
-  playBtn.onclick = async () => {
-    try{
-      await Tone.start();
-      if(!running){
-        synth = new Tone.Oscillator(220,'sawtooth').toDestination();
-        Tone.Transport.bpm.value = Number(bpm.value);
-        synth.start();
-        t0 = Tone.now();
-        running = true;
-        tick();
+    bpm.addEventListener('input',()=>{ bpmv.textContent=bpm.value; Tone.Transport.bpm.value = +bpm.value; });
+    smooth.addEventListener('input',()=>{ smoothv.textContent=(+smooth.value).toFixed(2); });
+    depth.addEventListener('input',()=>{ depthv.textContent=(+depth.value).toFixed(2); });
+    baseHz.addEventListener('input',()=>{ baseHzv.textContent=baseHz.value; setBaseFreq(); });
+    wtMix.addEventListener('input',()=>{ wtMixv.textContent=(+wtMix.value).toFixed(2); setMix(); });
+    wtA.addEventListener('change',()=> rebuildIfRunning());
+    wtB.addEventListener('change',()=> rebuildIfRunning());
+
+    [oct,semi,coarse,fine].forEach(inp=>{
+      inp.addEventListener('input',()=>{
+        const vmap={octv,semiv,coarsev,finev}; vmap[inp.id+'v']? vmap[inp.id+'v'].textContent=inp.value : 0;
+        setDetune();  // update detune in cents
+      });
+    });
+
+    // ===== Audio chain =====
+    let oscA=null, oscB=null, gA=null, gB=null, filter=null, route='pitch';
+    let raf=null, t0=0, running=false;
+
+    routeSel.addEventListener('change',()=> route = routeSel.value);
+
+    function evalCurveAt(n){
+      for(let i=0;i<points.length-1;i++){
+        const a=points[i], b=points[i+1];
+        if(n>=a.t && n<=b.t){
+          const u=(n-a.t)/(b.t-a.t||1e-6);
+          const s = +smooth.value;
+          const uu = s>0 ? (u*u*(3-2*u))*s + u*(1-s) : u;
+          return a.v + (b.v-a.v)*uu; // -1..1
+        }
       }
-    }catch(e){
-      console.error(e);
-      alert('Audio playback was blocked. Click the page then try again.');
+      return points[points.length-1].v;
     }
-  };
 
-  stopBtn.onclick = () => {
-    if(running){
+    function totalDetuneCents(){
+      // Octave(±3)*1200 + Semitone(±12)*100 + Coarse(±24)*100 + Fine(±50)
+      return (+oct.value)*1200 + (+semi.value)*100 + (+coarse.value)*100 + (+fine.value);
+    }
+
+    function setDetune(extraCents=0){
+      const cents = totalDetuneCents() + extraCents;
+      if(oscA) oscA.detune.value = cents;
+      if(oscB) oscB.detune.value = cents;
+    }
+
+    function setBaseFreq(){
+      if(oscA) oscA.frequency.value = +baseHz.value;
+      if(oscB) oscB.frequency.value = +baseHz.value;
+    }
+
+    function setMix(){
+      const mix = +wtMix.value; // 0..1
+      if(gA) gA.gain.rampTo(1 - mix, 0.01);
+      if(gB) gB.gain.rampTo(mix, 0.01);
+    }
+
+    function rebuildChain(){
+      // dispose old
+      [oscA,oscB,gA,gB,filter].forEach(n=>{ if(n){ n.dispose?.(); }});
+      // build new
+      filter = new Tone.Filter(800, 'lowpass').toDestination();
+      gA = new Tone.Gain(0.5).connect(filter);
+      gB = new Tone.Gain(0.5).connect(filter);
+
+      oscA = new Tone.Oscillator(+baseHz.value || 220, wtA.value).connect(gA);
+      oscB = new Tone.Oscillator(+baseHz.value || 220, wtB.value).connect(gB);
+
+      Tone.Transport.bpm.value = +bpm.value;
+      setDetune(0);
+      setMix();
+    }
+
+    function rebuildIfRunning(){
+      if(!running) return;
+      const wasRunning = running;
+      stopAudio();
+      rebuildChain();
+      startAudio();
+    }
+
+    function tick(){
+      const secPerBar = 60 / (+bpm.value) * 4;
+      const n=((Tone.now()-t0)/secPerBar)%1;
+      const val=evalCurveAt(n);      // -1..1
+      const amt=+depth.value;        // 0..1
+
+      if(route==='pitch'){
+        // LFO → extra detune in cents (±1200 * depth)
+        const extra = val * amt * 1200;
+        setDetune(extra);
+      }else{
+        // LFO → filter cutoff (100..8000 scaled by depth)
+        const min=100, max=8000;
+        const target = min + (max-min) * ((val*0.5+0.5) * amt);
+        filter.frequency.rampTo(target, 0.02);
+      }
+      raf=requestAnimationFrame(tick);
+    }
+
+    function startAudio(){
+      oscA.start(); oscB.start();
+      t0 = Tone.now(); running = true; tick();
+    }
+    function stopAudio(){
       cancelAnimationFrame(raf);
-      if(synth){ synth.stop(); synth.dispose(); synth = null; }
+      if(oscA){ oscA.stop(); }
+      if(oscB){ oscB.stop(); }
       running = false;
     }
-  };
 
-  // ---------- Export ----------
-  function dl(n,t,d){ const b=new Blob([d],{type:t}); const u=URL.createObjectURL(b);
-    const a=document.createElement('a'); a.href=u; a.download=n; a.click();
-    setTimeout(()=>URL.revokeObjectURL(u),1000);
-  }
-  document.getElementById('exportJson').onclick=()=>dl('lfo.json','application/json',JSON.stringify({points},null,2));
-  document.getElementById('exportCSV').onclick=()=>{ let rows=['t,value']; const N=256;
-    for(let i=0;i<N;i++){ const t=i/(N-1); rows.push(`${t.toFixed(3)},${evalCurveAt(t).toFixed(3)}`); }
-    dl('lfo.csv','text/csv',rows.join('\\n'));
-  };
-  document.getElementById('reset').onclick=()=>{ points=[{t:0,v:0},{t:.25,v:1},{t:.5,v:0},{t:.75,v:-1},{t:1,v:0}]; draw(); };
-});
-</script>
+    // Play / Stop
+    document.getElementById('play').onclick = async () => {
+      await Tone.start();
+      if(!running){
+        rebuildChain();
+        startAudio();
+      }
+    };
+    document.getElementById('stop').onclick = () => {
+      stopAudio();
+      // reset LFO influence on pitch
+      setDetune(0);
+    };
+
+    // ===== Export / Reset =====
+    function dl(n,t,d){ const b=new Blob([d],{type:t}); const u=URL.createObjectURL(b);
+      const a=document.createElement('a'); a.href=u; a.download=n; a.click();
+      setTimeout(()=>URL.revokeObjectURL(u),1000);
+    }
+    document.getElementById('exportJson').onclick=()=>dl('lfo.json','application/json',JSON.stringify({points},null,2));
+    document.getElementById('exportCSV').onclick=()=>{ let rows=['t,value']; const N=256;
+      for(let i=0;i<N;i++){ const t=i/(N-1); rows.push(`${t.toFixed(3)},${evalCurveAt(t).toFixed(3)}`); }
+      dl('lfo.csv','text/csv',rows.join('\n'));
+    };
+    document.getElementById('reset').onclick=()=>{ points=[{t:0,v:0},{t:.25,v:1},{t:.5,v:0},{t:.75,v:-1},{t:1,v:0}]; draw(); };
+  });
+  </script>
 </body>
 </html>
