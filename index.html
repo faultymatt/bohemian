@@ -90,4 +90,239 @@
     </div>
 
     <!-- Clickable mini-piano (2 octaves) -->
-    <div class="kbdwrap" i
+    <div class="kbdwrap" id="piano"></div>
+    <p class="cap">
+      Keys: <span class="kbd">Z X C V B N M , . /</span> (+ <span class="kbd">S D G H J</span>) ·
+      <span class="kbd">Q W E R T Y U I O P [ ]</span> (+ <span class="kbd">2 3 5 6 7 9 0</span>)
+    </p>
+  </div>
+
+  <!-- Custom partials -->
+  <div class="card">
+    <div class="row">
+      <strong>Custom Wavetable (16 partials)</strong>
+      <label>Target <select id="customTarget"><option value="A">Apply → A</option><option value="B">Apply → B</option></select></label>
+      <button id="applyCustom">Apply</button>
+    </div>
+    <div class="sliders" id="partialsWrap"></div>
+    <p class="cap">Tip: P1=1 is sine. Add upper partials for color. Click Apply to update & render.</p>
+  </div>
+</div>
+
+<script>
+window.addEventListener('load', () => {
+  // ---------- DOM ----------
+  const wtA=document.getElementById('wtA'), wtB=document.getElementById('wtB');
+  const wtMix=document.getElementById('wtMix'), wtMixv=document.getElementById('wtMixv');
+  const baseMidi=document.getElementById('baseMidi'), baseMidiv=document.getElementById('baseMidiv');
+  const oct=document.getElementById('oct'), octv=document.getElementById('octv');
+  const semi=document.getElementById('semi'), semiv=document.getElementById('semiv');
+  const coarse=document.getElementById('coarse'), coarsev=document.getElementById('coarsev');
+  const fine=document.getElementById('fine'), finev=document.getElementById('finev');
+  const cut=document.getElementById('cut'), cutv=document.getElementById('cutv');
+  const q=document.getElementById('q'), qv=document.getElementById('qv');
+  const att=document.getElementById('att'), attv=document.getElementById('attv');
+  const rel=document.getElementById('rel'), relv=document.getElementById('relv');
+  const waveA=document.getElementById('waveA'), waveB=document.getElementById('waveB');
+  const ctxA=waveA.getContext('2d'), ctxB=waveB.getContext('2d');
+  const fmt=(x,d=2)=>Number(x).toFixed(d);
+  wtMix.addEventListener('input',()=> wtMixv.textContent=fmt(wtMix.value,2));
+  baseMidi.addEventListener('input',()=> baseMidiv.textContent=baseMidi.value);
+  ;[oct,semi,coarse,fine].forEach(x=>x.addEventListener('input',()=>({octv,semiv,coarsev,finev}[x.id+'v'].textContent=x.value)));
+  ;[cut,q].forEach(x=>x.addEventListener('input',()=>({cutv,qv}[x.id+'v'].textContent= x===q?fmt(q.value,1):fmt(cut.value,0)));
+  att.addEventListener('input',()=> attv.textContent=fmt(att.value,2));
+  rel.addEventListener('input',()=> relv.textContent=fmt(rel.value,2));
+
+  // ---------- Custom partials ----------
+  const customTarget=document.getElementById('customTarget');
+  const partialsWrap=document.getElementById('partialsWrap');
+  const applyCustom=document.getElementById('applyCustom');
+  const PARTS=16, partialSliders=[];
+  for(let i=1;i<=PARTS;i++){
+    const lab=document.createElement('label');
+    lab.innerHTML=`P${i}<input type="range" min="0" max="1" step="0.01" value="${i===1?1:0}"
+                  style="height:90px;writing-mode:bt-lr;appearance:slider-vertical">`;
+    partialsWrap.appendChild(lab);
+    partialSliders.push(lab.querySelector('input'));
+  }
+  const getPartials=()=>{ const a=[0]; for(let i=0;i<PARTS;i++) a[i+1]=+partialSliders[i].value; return a; };
+  let partialsA=getPartials(), partialsB=getPartials();
+
+  // ---------- Keyboard mapping ----------
+  const keyToSemi={
+    'z':0,'s':1,'x':2,'d':3,'c':4,'v':5,'g':6,'b':7,'h':8,'n':9,'j':10,'m':11,',':12,'.':13,'/':14,
+    'q':12,'2':13,'w':14,'3':15,'e':16,'r':17,'5':18,'t':19,'6':20,'y':21,'7':22,'u':23,'i':24,'9':25,'o':26,'0':27,'p':28,'[':29,']':31
+  };
+  const held=new Set();
+  const midiToFreq=m=>440*Math.pow(2,(m-69)/12);
+
+  // ---------- Synth engine (確実に鳴る配線) ----------
+  let started=false;
+  let oscA=null, oscB=null, gA=null, gB=null, mixer=null, filter=null, ampEnv=null;
+  let currentHz = 440; // 可視化の速度用
+
+  function totalDetuneCents(){ return (+oct.value)*1200 + (+semi.value)*100 + (+coarse.value)*100 + (+fine.value); }
+  function setWT(osc, which, partials){ if(!osc) return;
+    if(which==='sine') osc.type='sine';
+    else if(which==='saw') osc.type='sawtooth';
+    else if(which==='square') osc.type='square';
+    else osc.set({type:'custom', partials});
+  }
+  function setMix(){ if(!gA||!gB) return;
+    const mix=+wtMix.value; gA.gain.rampTo(1-mix,0.01); gB.gain.rampTo(mix,0.01);
+  }
+
+  async function ensure(){                // ここはkeydown内で呼ぶ（ユーザー操作）
+    if(started) return;
+    await Tone.start();
+
+    // ノード構成：A/B → (ゲイン) → mixer → filter → ampEnv → destination
+    gA = new Tone.Gain(0.5);
+    gB = new Tone.Gain(0.5);
+    mixer = new Tone.Gain(1);
+
+    filter = new Tone.Filter(+cut.value,'lowpass'); filter.Q.value=+q.value;
+    ampEnv = new Tone.AmplitudeEnvelope({attack:+att.value,decay:0.08,sustain:0.85,release:+rel.value});
+    const out = new Tone.Gain(1).toDestination();
+
+    gA.connect(mixer); gB.connect(mixer);
+    mixer.connect(filter);
+    filter.connect(ampEnv);
+    ampEnv.connect(out);
+
+    const baseHz = midiToFreq(+baseMidi.value);
+    oscA = new Tone.Oscillator(baseHz,'sawtooth').connect(gA).start();
+    oscB = new Tone.Oscillator(baseHz,'square').connect(gB).start();
+
+    setWT(oscA, wtA.value==='customA'?'custom':wtA.value, partialsA);
+    setWT(oscB, wtB.value==='customB'?'custom':wtB.value, partialsB);
+
+    oscA.detune.value = totalDetuneCents();
+    oscB.detune.value = totalDetuneCents();
+
+    setMix();
+    started=true;
+  }
+
+  function noteOn(midi){
+    const hz=midiToFreq(midi);
+    currentHz = hz; // 可視化のスクロール速度に利用
+    oscA.frequency.setValueAtTime(hz, Tone.now());
+    oscB.frequency.setValueAtTime(hz, Tone.now());
+    const cents = totalDetuneCents();
+    oscA.detune.value = cents; oscB.detune.value = cents;
+    ampEnv.triggerAttack();
+  }
+  function noteOff(){ ampEnv.triggerRelease(); }
+
+  // ---------- 波形アニメ（周波数同期スクロール） ----------
+  let phaseA=0, phaseB=0, lastT=performance.now();
+  function drawOne(ctx, type, partials, phase){
+    const W=ctx.canvas.width, H=ctx.canvas.height;
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle='#0a0f1f'; ctx.fillRect(0,0,W,H);
+    ctx.strokeStyle='#22304a'; ctx.beginPath(); ctx.moveTo(0,H/2); ctx.lineTo(W,H/2); ctx.stroke();
+
+    const N=600;
+    ctx.strokeStyle='#8b5cf6'; ctx.lineWidth=2; ctx.beginPath();
+    for(let i=0;i<N;i++){
+      // 画面上の位相 [0..1)
+      const t = (i/(N-1) + phase) % 1;
+      let v=0;
+      if(type==='sine'){ v=Math.sin(2*Math.PI*t); }
+      else if(type==='saw'){ v=2*(t-0.5); }
+      else if(type==='square'){ v=(Math.sin(2*Math.PI*t)>=0?1:-1); }
+      else{ // custom: 部分和
+        for(let n=1;n<partials.length;n++){ v += (partials[n]||0)*Math.sin(2*Math.PI*n*t); }
+        const max=Math.max(1,...partials); v/=Math.max(1,max);
+      }
+      const x = i/(N-1)*(W-16)+8;
+      const y = H/2 - v*(H*0.4);
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+  }
+  function refreshWavesStatic(){
+    const aT = wtA.value==='customA'?'custom':wtA.value;
+    const bT = wtB.value==='customB'?'custom':wtB.value;
+    drawOne(ctxA,aT,aT==='custom'?partialsA:[0],0);
+    drawOne(ctxB,bT,bT==='custom'?partialsB:[0],0);
+  }
+  function animate(){
+    const now=performance.now();
+    const dt=(now-lastT)/1000; lastT=now;
+    // 1周期=幅W分進むイメージ。横スクロール速度は周波数に比例（phase += f*dt）
+    const f = currentHz || 0;
+    const scroll = (f*dt) % 1; // 1秒で f 周期進む
+    phaseA = (phaseA + scroll) % 1;
+    phaseB = (phaseB + scroll) % 1;
+
+    const aT = wtA.value==='customA'?'custom':wtA.value;
+    const bT = wtB.value==='customB'?'custom':wtB.value;
+    drawOne(ctxA,aT,aT==='custom'?partialsA:[0],phaseA);
+    drawOne(ctxB,bT,bT==='custom'?partialsB:[0],phaseB);
+
+    requestAnimationFrame(animate);
+  }
+  // ループ開始
+  refreshWavesStatic();
+  requestAnimationFrame(animate);
+
+  // ---------- Piano UI ----------
+  const piano=document.getElementById('piano');
+  const whiteSemis=[0,2,4,5,7,9,11,12,14,16,17,19,21,23];
+  whiteSemis.forEach(semi=>{ const k=document.createElement('div'); k.className='key'; k.dataset.semi=semi; piano.appendChild(k); });
+  const blackMap={1:18,3:46,6:102,8:130,10:158,13:214,15:242,18:298,20:326,22:354};
+  Object.entries(blackMap).forEach(([semi,left])=>{ const b=document.createElement('div'); b.className='bkey'; b.style.left=left+'px'; b.dataset.semi=semi; piano.appendChild(b); });
+  function highlight(semi,on){ const el=piano.querySelector(`[data-semi="${semi}"]`); if(el){ el.classList.toggle('on',on);} }
+  piano.addEventListener('mousedown', async e=>{
+    const t=e.target.closest('[data-semi]'); if(!t) return;
+    const semi=+t.dataset.semi; highlight(semi,true);
+    await ensure();
+    const midi=(+baseMidi.value)+semi-12; noteOn(midi);
+  });
+  window.addEventListener('mouseup',()=>{ if(started) noteOff(); piano.querySelectorAll('.on').forEach(el=>el.classList.remove('on')); });
+
+  // ---------- Computer keyboard ----------
+  window.addEventListener('keydown', async e=>{
+    const k=e.key.toLowerCase(); if(!(k in keyToSemi)) return;
+    e.preventDefault();
+    await ensure(); // ← ここでAudioContextをユーザー操作内で解放＆構築
+    const midi=(+baseMidi.value)+keyToSemi[k]-12;
+    if(!held.has(midi)){ held.add(midi); noteOn(midi); }
+  });
+  window.addEventListener('keyup', e=>{
+    const k=e.key.toLowerCase(); if(!(k in keyToSemi)) return;
+    const midi=(+baseMidi.value)+keyToSemi[k]-12;
+    held.delete(midi); if(held.size===0 && started) noteOff();
+  });
+
+  // ---------- UI -> Audio/Wave ----------
+  function detuneUpdate(){ if(oscA){ const c=totalDetuneCents(); oscA.detune.value=c; oscB.detune.value=c; } }
+  wtA.addEventListener('change',()=>{ if(oscA) setWT(oscA, wtA.value==='customA'?'custom':wtA.value, partialsA); });
+  wtB.addEventListener('change',()=>{ if(oscB) setWT(oscB, wtB.value==='customB'?'custom':wtB.value, partialsB); });
+  wtA.addEventListener('change',()=>refreshWavesStatic());
+  wtB.addEventListener('change',()=>refreshWavesStatic());
+  wtMix.addEventListener('input',()=>{ setMix(); wtMixv.textContent=fmt(wtMix.value,2); });
+  ;[oct,semi,coarse,fine].forEach(x=>x.addEventListener('input',detuneUpdate));
+  ;[cut,q].forEach(x=>x.addEventListener('input',()=>{ if(filter){ filter.frequency.value=+cut.value; filter.Q.value=+q.value; }}));
+  ;[att,rel].forEach(x=>x.addEventListener('change',()=>{ if(ampEnv){ ampEnv.set({attack:+att.value,release:+rel.value}); }}));
+
+  // Custom apply
+  document.getElementById('applyCustom').addEventListener('click',()=>{
+    const parts=getPartials();
+    if(customTarget.value==='A'){ partialsA=parts; if(oscA) setWT(oscA,'custom',partialsA); }
+    else { partialsB=parts; if(oscB) setWT(oscB,'custom',partialsB); }
+    refreshWavesStatic();
+  });
+
+  // 初期テキスト
+  wtMixv.textContent=fmt(wtMix.value,2);
+  baseMidiv.textContent=baseMidi.value;
+  ;[octv,semiv,coarsev,finev].forEach((el,i)=> el.textContent=['0','0','0','0'][i]);
+  attv.textContent=fmt(att.value,2); relv.textContent=fmt(rel.value,2);
+  cutv.textContent=fmt(cut.value,0); qv.textContent=fmt(q.value,1);
+});
+</script>
+</body>
+</html>
