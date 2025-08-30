@@ -22,7 +22,7 @@
     .panel{margin-top:20px}
     .hint{color:#6b7280;font-size:12px;text-align:center;margin-top:10px}
   </style>
-  <script defer src="https://unpkg.com/tone@14.8.49/build/Tone.js"></script>
+  <script src="https://unpkg.com/tone@14.8.49/build/Tone.js"></script>
 </head>
 <body>
   <div class="wrap">
@@ -31,21 +31,21 @@
       <canvas id="editor" width="900" height="260"></canvas>
       <div style="display:flex;gap:12px;margin-top:14px;flex-wrap:wrap;justify-content:center">
         <button id="play" class="btn primary">▶ Play</button>
-        <button id="stop" class="btn ghost">■ Abort</button>
-        <button id="exportJson" class="btn ghost">Export as .json</button>
-        <button id="exportCSV" class="btn ghost">Export as .csv</button>
+        <button id="stop" class="btn ghost">■ Stop</button>
+        <button id="exportJson" class="btn ghost">Export JSON</button>
+        <button id="exportCSV" class="btn ghost">Export CSV</button>
         <button id="reset" class="btn ghost">Reset</button>
       </div>
       <div class="panel" style="text-align:center;margin-top:20px">
-        <label>Tempo: <input id="bpm" type="range" min="40" max="200" value="120"> <span id="bpmv">120</span></label>
+        <label>BPM: <input id="bpm" type="range" min="40" max="200" value="120"> <span id="bpmv">120</span></label>
         <label>Smooth: <input id="smooth" type="range" min="0" max="1" value="0.5" step="0.05"> <span id="smoothv">0.50</span></label>
       </div>
     </div>
-    <p class="hint"></p>
+    <p class="hint">Draw the curve and modulate sound. Shift = step mode, D = delete point, R = reset.</p>
   </div>
 
 <script>
-(function(){
+window.addEventListener('load', () => {
   const editor=document.getElementById('editor');
   const ctx=editor.getContext('2d');
   const W=editor.width,H=editor.height,pad=20;
@@ -55,8 +55,8 @@
 
   function t2x(t){return inner.x+t*inner.w}
   function v2y(v){return inner.y+(1-(v+1)/2)*inner.h}
-  function x2t(x){return (x-inner.x)/inner.w}
-  function y2v(y){return (1-(y-inner.y)/inner.h)*2-1}
+  function x2t(x){return Math.max(0,Math.min(1,(x-inner.x)/inner.w))}
+  function y2v(y){return Math.max(-1,Math.min(1,(1-(y-inner.y)/inner.h)*2-1))}
 
   function draw(){
     ctx.clearRect(0,0,W,H);
@@ -64,33 +64,118 @@
     points.sort((a,b)=>a.t-b.t);
     for(let i=0;i<points.length;i++){
       const p=points[i],x=t2x(p.t),y=v2y(p.v);
-      if(i===0)ctx.moveTo(x,y);else{if(stepMode){const prev=points[i-1];ctx.lineTo(x,v2y(prev.v))}ctx.lineTo(x,y)}
+      if(i===0)ctx.moveTo(x,y);
+      else{ if(stepMode){const prev=points[i-1];ctx.lineTo(x,v2y(prev.v));} ctx.lineTo(x,y); }
     }
     ctx.stroke();
     points.forEach((p,i)=>{ctx.fillStyle=i===selected?'#c084fc':'#60a5fa';ctx.beginPath();ctx.arc(t2x(p.t),v2y(p.v),6,0,Math.PI*2);ctx.fill()});
   }
 
-  editor.addEventListener('pointerdown',e=>{const r=editor.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;selected=-1;for(let i=points.length-1;i>=0;i--){if(Math.hypot(mx-t2x(points[i].t),my-v2y(points[i].v))<8){selected=i;dragging=i;return}}points.push({t:x2t(mx),v:y2v(my)});selected=points.length-1;dragging=selected;draw()});
-  editor.addEventListener('pointermove',e=>{if(dragging==null)return;const r=editor.getBoundingClientRect();points[dragging]={t:Math.max(0,Math.min(1,x2t(e.clientX-r.left))),v:Math.max(-1,Math.min(1,y2v(e.clientY-r.top)))};draw()});
+  function hit(mx,my){
+    for(let i=points.length-1;i>=0;i--){
+      if(Math.hypot(mx-t2x(points[i].t),my-v2y(points[i].v))<8) return i;
+    } return -1;
+  }
+
+  editor.addEventListener('pointerdown',e=>{
+    const r=editor.getBoundingClientRect(); const mx=e.clientX-r.left, my=e.clientY-r.top;
+    const i=hit(mx,my);
+    if(i>=0){ selected=i; dragging=i; }
+    else{ points.push({t:x2t(mx),v:y2v(my)}); selected=points.length-1; dragging=selected; }
+    draw();
+  });
+  editor.addEventListener('pointermove',e=>{
+    if(dragging==null) return;
+    const r=editor.getBoundingClientRect();
+    points[dragging]={ t:x2t(e.clientX-r.left), v:y2v(e.clientY-r.top) };
+    draw();
+  });
   window.addEventListener('pointerup',()=>dragging=null);
-  window.addEventListener('keydown',e=>{if(e.key==='Shift')stepMode=true;if(e.key==='d'||e.key==='D'){if(selected>=0)points.splice(selected,1)}if(e.key==='r'||e.key==='R'){points=[{t:0,v:0},{t:.25,v:1},{t:.5,v:0},{t:.75,v:-1},{t:1,v:0}]}draw()});
-  window.addEventListener('keyup',e=>{if(e.key==='Shift')stepMode=false;draw()});
+  window.addEventListener('keydown',e=>{
+    if(e.key==='Shift') stepMode=true;
+    if((e.key==='d'||e.key==='D') && selected>=0){ points.splice(selected,1); selected=-1; }
+    if((e.key==='r'||e.key==='R')){ points=[{t:0,v:0},{t:.25,v:1},{t:.5,v:0},{t:.75,v:-1},{t:1,v:0}]; }
+    draw();
+  });
+  window.addEventListener('keyup',e=>{ if(e.key==='Shift') stepMode=false; draw(); });
   draw();
 
-  // Sounds
-  const synth=new Tone.Oscillator(220,'sawtooth').toDestination();
-  function evalCurveAt(n){for(let i=0;i<points.length-1;i++){const a=points[i],b=points[i+1];if(n>=a.t&&n<=b.t){const u=(n-a.t)/(b.t-a.t||1e-6);return a.v+(b.v-a.v)*u}}return points[points.length-1].v}
-  let raf=null,t0=0,running=false;
-  function tick(){const secPerBar=60/Number(bpm.value)*4;const n=((Tone.now()-t0)/secPerBar)%1;const val=evalCurveAt(n);synth.frequency.rampTo(220*(1+val*0.3),0.02);raf=requestAnimationFrame(tick)}
-  document.getElementById('play').onclick=async()=>{await Tone.start();if(!running){synth.start();t0=Tone.now();running=true;tick()}};
-  document.getElementById('stop').onclick=()=>{if(running){synth.stop();running=false;cancelAnimationFrame(raf)}};
+  // ---------- Audio ----------
+  let synth = null;
+  let raf=null, t0=0, running=false;
 
-  // Export
-  function dl(n,t,d){const b=new Blob([d],{type:t});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=n;a.click();setTimeout(()=>URL.revokeObjectURL(u),1e3)}
-  exportJson.onclick=()=>dl('lfo.json','application/json',JSON.stringify({points},null,2));
-  exportCSV.onclick=()=>{let r=['t,value'];for(let i=0;i<256;i++){const t=i/255;r.push(`${t.toFixed(3)},${evalCurveAt(t).toFixed(3)}`)}dl('lfo.csv','text/csv',r.join('\\n'))};
-  reset.onclick=()=>{points=[{t:0,v:0},{t:.25,v:1},{t:.5,v:0},{t:.75,v:-1},{t:1,v:0}];draw()};
-})();
+  function evalCurveAt(n){
+    for(let i=0;i<points.length-1;i++){
+      const a=points[i], b=points[i+1];
+      if(n>=a.t && n<=b.t){
+        const u=(n-a.t)/(b.t-a.t||1e-6);
+        const s = Number(document.getElementById('smooth').value);
+        const uu = s>0 ? (u*u*(3-2*u))*s + u*(1-s) : u;
+        return a.v + (b.v-a.v)*uu;
+      }
+    }
+    return points[points.length-1].v;
+  }
+
+  function tick(){
+    const bpm = Number(document.getElementById('bpm').value);
+    const secPerBar = 60 / bpm * 4;
+    const n=((Tone.now()-t0)/secPerBar)%1;
+    const val=evalCurveAt(n);
+    if(synth){
+      const base=220, depth=0.3;
+      synth.frequency.rampTo(base*(1+val*depth), 0.02);
+    }
+    raf=requestAnimationFrame(tick);
+  }
+
+  const playBtn=document.getElementById('play');
+  const stopBtn=document.getElementById('stop');
+  const bpm=document.getElementById('bpm');
+  const bpmv=document.getElementById('bpmv');
+  const smooth=document.getElementById('smooth');
+  const smoothv=document.getElementById('smoothv');
+
+  bpm.addEventListener('input',()=>{ bpmv.textContent=bpm.value; Tone.Transport.bpm.value = Number(bpm.value); });
+  smooth.addEventListener('input',()=>{ smoothv.textContent=Number(smooth.value).toFixed(2); });
+
+  playBtn.onclick = async () => {
+    try{
+      await Tone.start();
+      if(!running){
+        synth = new Tone.Oscillator(220,'sawtooth').toDestination();
+        Tone.Transport.bpm.value = Number(bpm.value);
+        synth.start();
+        t0 = Tone.now();
+        running = true;
+        tick();
+      }
+    }catch(e){
+      console.error(e);
+      alert('Audio playback was blocked. Click the page then try again.');
+    }
+  };
+
+  stopBtn.onclick = () => {
+    if(running){
+      cancelAnimationFrame(raf);
+      if(synth){ synth.stop(); synth.dispose(); synth = null; }
+      running = false;
+    }
+  };
+
+  // ---------- Export ----------
+  function dl(n,t,d){ const b=new Blob([d],{type:t}); const u=URL.createObjectURL(b);
+    const a=document.createElement('a'); a.href=u; a.download=n; a.click();
+    setTimeout(()=>URL.revokeObjectURL(u),1000);
+  }
+  document.getElementById('exportJson').onclick=()=>dl('lfo.json','application/json',JSON.stringify({points},null,2));
+  document.getElementById('exportCSV').onclick=()=>{ let rows=['t,value']; const N=256;
+    for(let i=0;i<N;i++){ const t=i/(N-1); rows.push(`${t.toFixed(3)},${evalCurveAt(t).toFixed(3)}`); }
+    dl('lfo.csv','text/csv',rows.join('\\n'));
+  };
+  document.getElementById('reset').onclick=()=>{ points=[{t:0,v:0},{t:.25,v:1},{t:.5,v:0},{t:.75,v:-1},{t:1,v:0}]; draw(); };
+});
 </script>
 </body>
 </html>
