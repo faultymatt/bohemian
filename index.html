@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bohemian</title>
+  <link rel="icon" href="favicon.ico" />
+  <!-- SNS用（任意） -->
+  <!-- Open Graph -->
+<meta property="og:title" content="Bohemian - Modular Web Synth" />
+<meta property="og:description" content="Bohemian is a ground-breaking web synth that allows porting for various industry-standard synths like Serum 2, Pigments 6, and more." />
+<meta property="og:url" content="https://bohemian-tawny.vercel.app/" />
+<meta property="og:type" content="website" />
+<meta property="og:image" content="https://bohemian-tawny.vercel.app/favicon.ico" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+
+<!-- Twitter Card（X） -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Bohemian — Modular Web Synth" />
+<meta name="twitter:description" content="Bohemian is a ground-breaking web synth that allows porting for various industry-standard synths like Serum 2, Pigments 6, and more." />
+<meta name="twitter:image" content="https://bohemian-tawny.vercel.app/favicon.ico" />
+
+<meta name="theme-color" content="#0b2a3a" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Loading -->
+  <div id="loading">
+    <div class="spinner"></div>
+    <p>Loading Bohemian…</p>
+  </div>
+
+  <div class="appframe">
+    <!-- Sidebar Tabs -->
+    <aside class="sidebar" aria-label="Navigation" >
+      <button class="tabbtn active" data-tab="osc" title="OSC"><img src="waveform.ico" alt="OSC"></button>
+      <button class="tabbtn" data-tab="modules" title="Modules"><img src="node.ico" alt="Modules"></button>
+      <button class="tabbtn" data-tab="fx" title="FX"><img src="reverb.ico" alt="FX" ></button>
+    </aside>
+
+    <div class="mainpane">
+      <!-- Top bar -->
+      <header class="topbar">
+        <div class="brand">
+          <img class="favicon" src="favicon.ico" alt="Bohemian" />
+          <h1>Bohemian</h1>
+        </div>
+      </header>
+
+      <!-- Views -->
+      <main class="container">
+        <!-- 必須：3ビュー（初期はoscのみ表示） -->
+        <section id="view-osc" class="view is-active">
+          <section class="wavetables">
+            <div class="wt-card" data-slot="0">
+              <h2>Wavetable A</h2>
+              <div class="wt-grid">
+                <label>Waveform
+                  <select id="wtA-shape">
+                    <option value="sine">Sine</option>
+                    <option value="saw">Saw</option>
+                    <option value="square">Square</option>
+                  </select>
+                </label>
+                <div class="steppers">
+                  <div class="stepper"><span>OCT</span><button data-delta="-1" data-target="wtA-oct">▾</button><output id="wtA-oct" data-slot="0" data-param="oct">0</output><button data-delta="1" data-target="wtA-oct">▴</button></div>
+                  <div class="stepper"><span>SEM</span><button data-delta="-1" data-target="wtA-sem">▾</button><output id="wtA-sem" data-slot="0" data-param="sem">0</output><button data-delta="1" data-target="wtA-sem">▴</button></div>
+                  <div class="stepper"><span>FIN</span><button data-delta="-1" data-target="wtA-fin">▾</button><output id="wtA-fin" data-slot="0" data-param="fin">0</output><button data-delta="1" data-target="wtA-fin">▴</button></div>
+                  <div class="stepper"><span>CRS</span><button data-delta="-10" data-target="wtA-crs">▾</button><output id="wtA-crs" data-slot="0" data-param="crs">0</output><button data-delta="10" data-target="wtA-crs">▴</button></div>
+                </div>
+                <label>Volume
+                  <input id="wtA-gain" type="range" min="0" max="1" step="0.001" value="0.5" />
+                </label>
+                <canvas class="wt-scope" id="wtA-scope" width="400" height="100"></canvas>
+              </div>
+            </div>
+
+            <div class="wt-card" data-slot="1">
+              <h2>Wavetable B</h2>
+              <div class="wt-grid">
+                <label>Waveform
+                  <select id="wtB-shape">
+                    <option value="sine">Sine</option>
+                    <option value="saw" selected>Saw</option>
+                    <option value="square">Square</option>
+                  </select>
+                </label>
+                <div class="steppers">
+                  <div class="stepper"><span>OCT</span><button data-delta="-1" data-target="wtB-oct">▾</button><output id="wtB-oct" data-slot="1" data-param="oct">0</output><button data-delta="1" data-target="wtB-oct">▴</button></div>
+                  <div class="stepper"><span>SEM</span><button data-delta="-1" data-target="wtB-sem">▾</button><output id="wtB-sem" data-slot="1" data-param="sem">0</output><button data-delta="1" data-target="wtB-sem">▴</button></div>
+                  <div class="stepper"><span>FIN</span><button data-delta="-1" data-target="wtB-fin">▾</button><output id="wtB-fin" data-slot="1" data-param="fin">0</output><button data-delta="1" data-target="wtB-fin">▴</button></div>
+                  <div class="stepper"><span>CRS</span><button data-delta="-10" data-target="wtB-crs">▾</button><output id="wtB-crs" data-slot="1" data-param="crs">0</output><button data-delta="10" data-target="wtB-crs">▴</button></div>
+                </div>
+                <label>Volume
+                  <input id="wtB-gain" type="range" min="0" max="1" step="0.001" value="0.5" />
+                </label>
+                <canvas class="wt-scope" id="wtB-scope" width="400" height="100"></canvas>
+              </div>
+            </div>
+          </section>
+
+          <section class="keyboard-section">
+            <div class="topline">
+              <div class="poly">Poly: <output id="poly-out">0</output></div>
+              <canvas id="meter" width="180" height="12"></canvas>
+            </div>
+            <div id="keyboard" class="keyboard"></div>
+            <div class="hint">Type to play (FL Studio mapping). Hold key = sound on; release = sound off.</div>
+          </section>
+        </section>
+
+        <section id="view-modules" class="view" hidden>
+          <div class="rack">
+            <div class="module card">
+              <h3>LFO</h3>
+              <label>Wave
+                <select id="lfo-shape">
+                  <option value="sine">Sine</option>
+                  <option value="triangle">Triangle</option>
+                </select>
+              </label>
+              <label>Rate (Hz)
+                <input id="lfo-rate" type="range" min="0.1" max="20" step="0.1" value="2" />
+              </label>
+              <label>Depth (cents)
+                <input id="lfo-depth" type="range" min="0" max="100" step="1" value="25" />
+              </label>
+              <label>Target
+                <select id="lfo-target">
+                  <option value="both">A+B detune</option>
+                  <option value="a">A only</option>
+                  <option value="b">B only</option>
+                </select>
+              </label>
+            </div>
+            <div class="module card">
+              <h3>Default Patch</h3>
+              <p class="wiring">Typing Keys → Osc A/B → Mixer → FX → Output</p>
+              <p class="muted">This is a preset wiring. Additions are non-destructive.</p>
+            </div>
+          </div>
+        </section>
+
+        <section id="view-fx" class="view" hidden>
+          <div class="fx-grid">
+            <div class="fx card">
+              <h3>Reverb</h3>
+              <label>Size/Decay
+                <input id="rvb-size" type="range" min="0.1" max="4" step="0.1" value="1.6" />
+              </label>
+              <label>Mix
+                <input id="rvb-mix" type="range" min="0" max="1" step="0.01" value="0.25" />
+              </label>
+            </div>
+            <div class="fx card">
+              <h3>Distortion</h3>
+              <label>Drive
+                <input id="dst-drive" type="range" min="0" max="1" step="0.01" value="0.2" />
+              </label>
+              <label>Mix
+                <input id="dst-mix" type="range" min="0" max="1" step="0.01" value="0.15" />
+              </label>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <!-- Background -->
+  <canvas id="bg-tris" class="bg-tris" aria-hidden="true"></canvas>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

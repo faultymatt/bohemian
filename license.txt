@@ -1,0 +1,6 @@
+Copyright (c) 2025 faultymatt
+
+All rights reserved.
+
+This code is proprietary and may not be used, copied, modified, 
+or distributed without explicit permission from the author.
